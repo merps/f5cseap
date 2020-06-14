@@ -147,6 +147,12 @@ class F5CSEAPInstance (F5CSGeneric):
         self.events = []
         return data
 
+    def get(self):
+        return {
+            'service_instance_name': self.service_instance_name,
+            'last_time_fetch_security_events': self.time_fetch_security_events,
+        }
+
 
 class F5CSEAP (F5CSGeneric):
     def __init__(self, username, password, logger):
@@ -158,6 +164,7 @@ class F5CSEAP (F5CSGeneric):
         # Relationship with other tables
         self.children['eap_instance'] = {}
         self.eap_instance_ids = self.children['eap_instance'].keys()
+        self.eap_instances = self.children['eap_instance'].values()
         # Attribute
         self.service_type = 'waf'
         self.catalog_id = 'c-aa9N0jgHI4'
@@ -186,6 +193,14 @@ class F5CSEAP (F5CSGeneric):
         events = []
         for eap_instance in self.eap_instance_ids:
             events.append(eap_instance.pop_security_events())
+
+    def get(self):
+        data = {
+            'username': self.username
+        }
+        for eap_instance_id, eap_instance in self.children['eap_instance'].items():
+            data[eap_instance_id] = eap_instance.get()
+        return data
 
 
 

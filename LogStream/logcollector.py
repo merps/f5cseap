@@ -7,12 +7,12 @@ from time import gmtime, strftime
 
 
 class RemoteSyslog(storage_engine.DatabaseFormat):
-    def __init__(self, ip_address, port, logger):
+    def __init__(self, ip_address, logger, port=514):
         super(RemoteSyslog, self).__init__(logger)
         # Table
         self.type = 'syslog'
         # Primary key
-        self.id = ip_address + ':' + port
+        self.id = ip_address + ':' + str(port)
         self.handler = logging.handlers.SysLogHandler(address=(ip_address, port))
 
     def emit(self, messages):
@@ -24,6 +24,11 @@ class RemoteSyslog(storage_engine.DatabaseFormat):
                 'exc_info': 'exc_info'
             })
             self.handler.emit(record)
+
+    def get(self):
+        return {
+            'id': self.id
+        }
 
 
 class LogCollectorDB(storage_engine.DatabaseFormat):
@@ -40,6 +45,21 @@ class LogCollectorDB(storage_engine.DatabaseFormat):
     def remove(self, log_instance):
         if log_instance.id in self.children[log_instance.type].keys():
             log_instance.delete()
+
+    def get(self):
+        data_all_types = {}
+
+        # syslog
+        type = 'syslog'
+        data = []
+        for log_instance in self.children[type].values():
+            data.append(log_instance.get())
+        data_all_types[type] = data
+
+        return data_all_types
+
+
+
 
 
 
