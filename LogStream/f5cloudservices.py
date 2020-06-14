@@ -21,8 +21,7 @@ class F5CSGeneric (storage_engine.DatabaseFormat):
         self.catalog_id = None
         self.service_type = None
 
-    def enable(self, logger):
-        self.logger = logger
+    def enable(self):
         self.get_token()
         self.get_account_user()
 
@@ -77,8 +76,7 @@ class F5CSGeneric (storage_engine.DatabaseFormat):
         self.session = requests.session()
         url = 'https://' + self.host + '/v1/svc-auth/login'
         headers = {
-            'Referer': url,
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/json'
         }
         data = {
             'username': self.username,
@@ -87,7 +85,7 @@ class F5CSGeneric (storage_engine.DatabaseFormat):
         r = self.session.post(
             url,
             headers=headers,
-            data=data,
+            data=str(data).replace("\'", "\""),
             verify=False)
         self.logger.info('Create Token for an Application using Password grant type associated to username %s' % (
             self.username))
@@ -102,7 +100,7 @@ class F5CSGeneric (storage_engine.DatabaseFormat):
     def get_account_user(self):
         path = '/v1/svc-account/user'
         parameters = []
-        self.primary_account_id = self._get(path, parameters)
+        self.primary_account_id = self._get(path, parameters)['primary_account_id']
 
     def get_subscription(self):
         path = '/v1/svc-subscription/subscriptions'
@@ -118,7 +116,7 @@ class F5CSEAPInstance (F5CSGeneric):
     def __init__(self, subscription, username, password, logger):
         super(F5CSEAPInstance, self).__init__(subscription, username, password, logger)
         # Table
-        self.type = 'eap'
+        self.type = 'eap_instance'
         # Primary key
         self.id = subscription['subscription_id']
         # Attribute
@@ -166,19 +164,19 @@ class F5CSEAP (F5CSGeneric):
 
     def fecth_subscriptions(self):
         subscriptions = self.get_subscription()['subscriptions']
-        cur_subscriptions = []
+        cur_subscription_ids = []
 
         # CREATE new eap_instance
         for subscription in subscriptions:
-            if subscription not in self.eap_instance_ids:
+            if subscription['subscription_id'] not in self.eap_instance_ids:
                 eap_instance = F5CSEAPInstance(subscription, self.username, self.password, self.logger)
                 self.create_child(eap_instance)
-            cur_subscriptions.append(subscription['subscription_id'])
+            cur_subscription_ids.append(subscription['subscription_id'])
 
         # DELETE old eap_instance
-        for eap_instance in self.eap_instance_ids:
-            if eap_instance.subscription_id not in cur_subscriptions:
-                eap_instance.delete()
+        for eap_instance_id in self.eap_instance_ids:
+            if eap_instance_id not in cur_subscription_ids:
+                self.children['eap_instance'][eap_instance_id].delete()
 
     def fetch_security_events(self):
         for eap_instance in self.eap_instance_ids:

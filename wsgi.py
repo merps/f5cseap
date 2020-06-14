@@ -27,92 +27,17 @@ def setup_logging(log_level, log_file):
 
 # Logging settings
 global logger
-logger = None
+logger = setup_logging(
+    log_level='debug',
+    log_file='logs/log.txt'
+)
 
 global f5cs_subscription
-f5cs = None
-
-
-@swagger.definition('system', tags=['v2_model'])
-class ConfigSystem:
-    """
-    Recommendation Query Context
-    ---
-    required:
-      - log
-    properties:
-        log:
-          type: object
-          schema:
-          $ref: '#/definitions/system_log'
-    """
-
-    @staticmethod
-    def prepare(data_json):
-        if 'log' in data_json.keys():
-            result = ConfigSystemLog.prepare(data_json['log'])
-            return {
-                'code': result['code'],
-                'log': result
-            }
-        else:
-            return None
-
-    @staticmethod
-    def set(data_json):
-        ConfigSystemLog.set(data_json['log'])
-
-    @staticmethod
-    def get():
-        return ConfigSystemLog.get()
-
-
-@swagger.definition('system_log', tags=['v2_model'])
-class ConfigSystemLog:
-    """
-    Recommendation Query Context
-    ---
-    required:
-      - log_level
-      - log_file
-    properties:
-      log_level:
-        type: string
-        description: log level
-      log_file:
-        type: string
-        description: absolute or relative log file path
-    """
-
-    @staticmethod
-    def prepare(data_json):
-        if 'log_level' in data_json and 'log_file' in data_json:
-            result = {
-                'code': 200,
-                'object': setup_logging(
-                    log_level=data_json['log_level'],
-                    log_file=data_json['log_file']
-                )
-            }
-        else:
-            result = {
-                'code': 400,
-                'msg': 'parameters: log_level, log_file must be set'
-            }
-        return result
-
-    @staticmethod
-    def set(data_json):
-        logger = data_json['object']
-
-    @staticmethod
-    def get():
-        if logger is not None:
-            return {
-                'log_level': logger.getLevelName()
-            }
-        else:
-            return None
+f5cs = f5cloudservices.F5CSEAP(
+    username=None,
+    password=None,
+    logger=logger
+)
 
 
 @swagger.definition('f5cs', tags=['v2_model'])
@@ -137,7 +62,7 @@ class ConfigF5CS:
         if 'username' in data_json and 'password' in data_json:
 
             # no change
-            if f5cs is not None and 'username' == f5cs.username:
+            if 'username' == f5cs.username:
                 result = {
                     'code': 202,
                     'object': f5cs
@@ -147,11 +72,7 @@ class ConfigF5CS:
             else:
                 result = {
                     'code': 200,
-                    'object': f5cloudservices.F5CSEAP(
-                        username=data_json['username'],
-                        password=data_json['password'],
-                        logger=None
-                    )
+                    'object': f5cs
                 }
         else:
             result = {
@@ -162,8 +83,9 @@ class ConfigF5CS:
 
     @staticmethod
     def set(data_json):
-        f5cs = data_json['object']
-        f5cs.enable(logger)
+        f5cs.username = data_json['username']
+        f5cs.password = data_json['password']
+        f5cs.enable()
         f5cs.fecth_subscriptions()
 
     @staticmethod
@@ -179,7 +101,6 @@ class ConfigF5CS:
 class Declare(Resource):
     def get(self):
         return {
-            'system': ConfigSystem.get(),
             'f5cs': ConfigF5CS.get()
         }, 200
 
@@ -196,13 +117,8 @@ class Declare(Resource):
             name: body
             schema:
               required:
-                - system
                 - f5cs
               properties:
-                system:
-                  type: object
-                  schema:
-                  $ref: '#/definitions/system'
                 f5cs:
                   type: object
                   schema:
@@ -215,17 +131,6 @@ class Declare(Resource):
         result = {}
 
         # Sanity check
-        cur_class = 'system'
-        if cur_class in data_json.keys():
-            result[cur_class] = ConfigSystem.prepare(data_json[cur_class])
-            if result[cur_class]['code'] not in (200, 201, 202):
-                return result, result[cur_class]['code']
-        else:
-            return {
-                'code': 400,
-                'msg': 'parameters: ' + cur_class + ' must be set'
-            }
-
         cur_class = 'f5cs'
         if cur_class in data_json.keys():
             result[cur_class] = ConfigF5CS.prepare(data_json[cur_class])
@@ -238,15 +143,11 @@ class Declare(Resource):
             }
 
         # Deploy
-        cur_class = 'system'
-        if cur_class in data_json.keys():
-            ConfigSystem.set(result[cur_class])
-
         cur_class = 'f5cs'
         if cur_class in data_json.keys():
-            ConfigF5CS.set(result[cur_class])
+            ConfigF5CS.set(data_json[cur_class])
 
-        return result, 200
+        return "Configuration done", 200
 
 
 api.add_resource(Declare, '/declare')
