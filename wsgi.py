@@ -3,12 +3,10 @@ from flask_restful import (Api, Resource)
 from flasgger import Swagger
 from LogStream import f5cloudservices, logcollector
 import logging
+import threading
+import uuid
 
 application = Flask(__name__)
-application.config['SWAGGER'] = {
-    'title': 'CS EAP LogStream F5',
-    'openapi': '3.0.2'
-}
 api = Api(application)
 swagger = Swagger(application)
 
@@ -25,22 +23,24 @@ def setup_logging(log_level, log_file):
     return logging.getLogger(__name__)
 
 
-# Logging settings
-global logger
+# Global var
 logger = setup_logging(
     log_level='debug',
     log_file='logs/log.txt'
 )
 
-global f5cs
 f5cs = f5cloudservices.F5CSEAP(
     username=None,
     password=None,
     logger=logger
 )
 
-global logcol_db
 logcol_db = logcollector.LogCollectorDB(logger)
+
+thread_manager = {
+    'event': threading.Event(),
+    'thread_queue': []
+}
 
 
 @swagger.definition('f5cs', tags=['v2_model'])
@@ -187,6 +187,27 @@ class ConfigSyslogServer:
 
 class Declare(Resource):
     def get(self):
+        """
+        Get LogStream current declaration
+        ---
+        tags:
+          - F5 Cloud Services LogStream
+        responses:
+          200:
+            schema:
+              required:
+                - f5cs
+                - logcollector
+              properties:
+                f5cs:
+                  type: object
+                  schema:
+                  $ref: '#/definitions/f5cs'
+                logcollector:
+                  type: object
+                  schema:
+                  $ref: '#/definitions/logcollector'
+        """
         return {
             'f5cs': ConfigF5CS.get(),
             'logcollector': ConfigLogCollector.get(),
@@ -258,7 +279,110 @@ class Declare(Resource):
         return "Configuration done", 200
 
 
+class EngineThreading(Resource):
+    @staticmethod
+    def start_main():
+        if len(thread_manager['thread_queue']) == 0:
+            t = threading.Thread(
+                target=EngineThreading.task_producer_consumer,
+                name=str(uuid.uuid4()),
+                args=(thread_manager['event'],)
+            )
+            thread_manager['thread_queue'].append(t)
+            logger.info("%s::%s: NEW THREAD, database changes will be sync by the new thread in sync_queue: id=%s" %
+                        (__class__.__name__, __name__, t.name))
+
+            t.start()
+
+    @staticmethod
+    def task_producer_consumer():
+        f5cs.fetch_security_events()
+        events = f5cs.pop_security_events()
+        logcol_db.emit(events)
+
+
+class Engine(Resource):
+    def get(self):
+        """
+        Get engine status
+        ---
+        tags:
+          - F5 Cloud Services LogStream
+        responses:
+          200:
+            schema:
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  description: status
+                threads:
+                  type: integer
+                  description: number of running threads
+        """
+        data = {}
+        if len(thread_manager['thread_queue']) > 0:
+            data['status'] = 'sync processing'
+            data['threads'] = thread_manager['thread_queue'].len()
+        else:
+            data['status'] = 'no sync process'
+        return data
+
+    def post(self):
+        """
+            Start/Stop engine
+            ---
+            tags:
+              - F5 Cloud Services LogStream
+            consumes:
+              - application/json
+            parameters:
+              - in: body
+                name: body
+                schema:
+                  required:
+                    - action
+                  properties:
+                    f5cs:
+                      type: string
+                      description : Start/Stop engine
+            responses:
+              200:
+                description: Action done
+        """
+        data_json = request.get_json()
+
+        # Sanity check
+        cur_class = 'action'
+        if cur_class not in data_json.keys():
+            return {
+                'code': 400,
+                'msg': 'parameters: ' + cur_class + ' must be set'
+            }
+        else:
+            # Sanity check
+            if data_json[cur_class].lower() == 'start':
+                if len(thread_manager['thread_queue']) > 0:
+                    return {
+                        'code': 400,
+                        'msg': 'engine already started'
+                    }
+                else:
+                    EngineThreading.task_producer_consumer()
+            elif data_json[cur_class].lower() == 'stop':
+                if len(thread_manager['thread_queue']) == 0:
+                    return {
+                        'code': 400,
+                        'msg': 'engine already stopped'
+                    }
+                else:
+                    # STOP
+                    pass
+
+
 api.add_resource(Declare, '/declare')
+api.add_resource(Engine, '/engine')
 
 # Start program
 if __name__ == '__main__':

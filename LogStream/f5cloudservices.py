@@ -4,14 +4,14 @@ from time import gmtime, strftime
 
 
 class F5CSGeneric (storage_engine.DatabaseFormat):
-    def __init__(self, username, password, logger, host='api.cloudservices.f5.com'):
+    def __init__(self, username, password, logger):
         super(F5CSGeneric, self).__init__(logger)
         # Table
         self.type = 'f5_cloud_services'
         # Primary key
         self.id = username
         # Attribute
-        self.host = host
+        self.host = 'api.cloudservices.f5.com'
         self.username = username
         self.password = password
         self.session = None
@@ -114,7 +114,7 @@ class F5CSGeneric (storage_engine.DatabaseFormat):
 
 class F5CSEAPInstance (F5CSGeneric):
     def __init__(self, subscription, username, password, logger):
-        super(F5CSEAPInstance, self).__init__(subscription, username, password, logger)
+        super(F5CSEAPInstance, self).__init__(username, password, logger)
         # Table
         self.type = 'eap_instance'
         # Primary key
@@ -125,12 +125,14 @@ class F5CSEAPInstance (F5CSGeneric):
         self.service_instance_name = subscription['service_instance_name']
         self.time_fetch_security_events = self._update_time()
         self.events = []
+        self.get_token()
+        self.get_account_user()
 
     def _update_time(self):
         return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime())
 
     def fetch_security_events(self):
-        url = '/api/v2/analytics/security/events'
+        url = '/waf/v1/analytics/security/events'
         data = {
             'service_instance_id': self.service_instance_id,
             'subscription_id': self.subscription_id,
@@ -176,7 +178,11 @@ class F5CSEAP (F5CSGeneric):
         # CREATE new eap_instance
         for subscription in subscriptions:
             if subscription['subscription_id'] not in self.eap_instance_ids:
-                eap_instance = F5CSEAPInstance(subscription, self.username, self.password, self.logger)
+                eap_instance = F5CSEAPInstance(
+                    subscription=subscription,
+                    username=self.username,
+                    password=self.password,
+                    logger=self.logger)
                 self.create_child(eap_instance)
             cur_subscription_ids.append(subscription['subscription_id'])
 
@@ -186,13 +192,14 @@ class F5CSEAP (F5CSGeneric):
                 self.children['eap_instance'][eap_instance_id].delete()
 
     def fetch_security_events(self):
-        for eap_instance in self.eap_instance_ids:
+        for eap_instance in self.eap_instances:
             eap_instance.fetch_security_events()
 
     def pop_security_events(self):
         events = []
-        for eap_instance in self.eap_instance_ids:
+        for eap_instance in self.eap_instances:
             events.append(eap_instance.pop_security_events())
+        return events
 
     def get(self):
         data = {

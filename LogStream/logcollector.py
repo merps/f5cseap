@@ -18,10 +18,7 @@ class RemoteSyslog(storage_engine.DatabaseFormat):
     def emit(self, messages):
         for message in messages:
             record = logging.makeLogRecord({
-                'name': socket.gethostname(),
-                'level': 1,
                 'msg': message,
-                'exc_info': 'exc_info'
             })
             self.handler.emit(record)
 
@@ -58,11 +55,11 @@ class LogCollectorDB(storage_engine.DatabaseFormat):
 
         return data_all_types
 
-
-
-
-
-
+    def emit(self, messages):
+        # syslog
+        type = 'syslog'
+        for log_instance in self.children[type].values():
+            log_instance.emit(messages)
 
 
 
