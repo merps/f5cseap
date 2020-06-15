@@ -50,7 +50,7 @@ thread_manager['event'].set()
 @swagger.definition('f5cs', tags=['v2_model'])
 class ConfigF5CS:
     """
-    Recommendation Query Context
+    Configure F5 Cloud Services
     ---
     required:
       - username
@@ -96,7 +96,7 @@ class ConfigF5CS:
 @swagger.definition('logcollector', tags=['v2_model'])
 class ConfigLogCollector:
     """
-    Recommendation Query Context
+    Configure remote logging servers
     ---
     required:
       - syslog
@@ -142,7 +142,7 @@ class ConfigLogCollector:
 @swagger.definition('syslog_server', tags=['v2_model'])
 class ConfigSyslogServer:
     """
-    Recommendation Query Context
+    Configure a syslog server
     ---
     required:
       - ip_address
@@ -286,6 +286,10 @@ class Declare(Resource):
 class EngineThreading(Resource):
     @staticmethod
     def start_main():
+        """
+        Start threads. One thread per EAP instance.
+        :return:
+        """
         if len(thread_manager['thread_queue'].keys()) == 0 and \
                 thread_manager['event'].is_set():
             thread_manager['event'].clear()
@@ -308,6 +312,10 @@ class EngineThreading(Resource):
 
     @staticmethod
     def stop_main():
+        """
+        Stop gracefully threads
+        :return:
+        """
         if not thread_manager['event'].is_set():
             # set flag as a signal to threads for stop processing their next fetch logs iteration
             thread_manager['event'].set()
@@ -339,6 +347,13 @@ class EngineThreading(Resource):
 
     @staticmethod
     def task_producer_consumer(thread_flag, thread_name, eap_instance):
+        """
+        fetch security events and send them on remote logging servers
+        :param thread_flag:
+        :param thread_name:
+        :param eap_instance:
+        :return:
+        """
         while not thread_flag.is_set():
             eap_instance.get_token()
             eap_instance.fetch_security_events()
@@ -408,6 +423,7 @@ class Engine(Resource):
                     f5cs:
                       type: string
                       description : Start/Stop engine
+                      enum: ['start', 'stop', 'restart']
             responses:
               200:
                 description: Action done
