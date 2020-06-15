@@ -5,6 +5,7 @@ from LogStream import f5cloudservices, logcollector
 import logging
 import threading
 import uuid
+import time
 
 application = Flask(__name__)
 api = Api(application)
@@ -39,8 +40,11 @@ logcol_db = logcollector.LogCollectorDB(logger)
 
 thread_manager = {
     'event': threading.Event(),
-    'thread_queue': []
+    'thread_queue': {},
+    'update_interval': 10,
 }
+# event = True == engine stopped
+thread_manager['event'].set()
 
 
 @swagger.definition('f5cs', tags=['v2_model'])
@@ -84,7 +88,7 @@ class ConfigF5CS:
     @staticmethod
     def get():
         if f5cs is not None:
-            return f5cs.get()
+            return f5cs.get_json()
         else:
             return None
 
@@ -282,23 +286,80 @@ class Declare(Resource):
 class EngineThreading(Resource):
     @staticmethod
     def start_main():
-        if len(thread_manager['thread_queue']) == 0:
-            t = threading.Thread(
-                target=EngineThreading.task_producer_consumer,
-                name=str(uuid.uuid4()),
-                args=(thread_manager['event'],)
-            )
-            thread_manager['thread_queue'].append(t)
-            logger.info("%s::%s: NEW THREAD, database changes will be sync by the new thread in sync_queue: id=%s" %
-                        (__class__.__name__, __name__, t.name))
-
-            t.start()
+        if len(thread_manager['thread_queue'].keys()) == 0 and \
+                thread_manager['event'].is_set():
+            thread_manager['event'].clear()
+            for eap_instance in f5cs.get_eap_instances():
+                thread_name = str(uuid.uuid4())
+                t = threading.Thread(
+                    target=EngineThreading.task_producer_consumer,
+                    name=thread_name,
+                    args=(thread_manager['event'], thread_name, eap_instance)
+                )
+                thread_manager['thread_queue'][thread_name] = t
+                print("%s::%s: NEW THREAD: id=%s;eap_instance:%s" %
+                            (__class__.__name__, __name__, t.name, eap_instance.id))
+                logger.debug("%s::%s: NEW THREAD: id=%s;eap_instance:%s" %
+                            (__class__.__name__, __name__, t.name, eap_instance.id))
+                t.start()
+            return "Engine started", 200
+        else:
+            return "Engine already started", 202
 
     @staticmethod
-    def task_producer_consumer():
-        f5cs.fetch_security_events()
-        events = f5cs.pop_security_events()
-        logcol_db.emit(events)
+    def stop_main():
+        if not thread_manager['event'].is_set():
+            # set flag as a signal to threads for stop processing their next fetch logs iteration
+            thread_manager['event'].set()
+            print("%s::%s: Main - event set" %
+                         (__class__.__name__, __name__))
+            logger.debug("%s::%s: Main - event set" %
+                         (__class__.__name__, __name__))
+
+            # wait for threads to stop processing their current fetch logs iteration
+            while len(thread_manager['thread_queue'].keys()) > 0:
+                print("%s::%s: Main - wait for dying thread" %
+                             (__class__.__name__, __name__))
+                logger.debug("%s::%s: Main - wait for dying thread" %
+                             (__class__.__name__, __name__))
+                time.sleep(thread_manager['update_interval'])
+
+            print("%s::%s: Main - all thread died" %
+                         (__class__.__name__, __name__))
+            logger.debug("%s::%s: Main - all thread died" %
+                         (__class__.__name__, __name__))
+            return "Engine stopped", 200
+        else:
+            return "Engine already stopped", 202
+
+    @staticmethod
+    def restart_main():
+        EngineThreading.stop_main()
+        return EngineThreading.start_main()
+
+    @staticmethod
+    def task_producer_consumer(thread_flag, thread_name, eap_instance):
+        while not thread_flag.is_set():
+            eap_instance.get_token()
+            eap_instance.fetch_security_events()
+            events = eap_instance.pop_security_events()
+            logcol_db.emit(events)
+
+            print("%s::%s: THREAD SENT LOGS: name=%s;eap_instance:%s" %
+                         (__class__.__name__, __name__, thread_name, eap_instance.id))
+            logger.debug("%s::%s: THREAD SENT LOGS: name=%s;eap_instance:%s" %
+                         (__class__.__name__, __name__, thread_name, eap_instance.id))
+            time.sleep(thread_manager['update_interval'])
+            print("%s::%s: THREAD AWAKE: name=%s;eap_instance:%s" %
+                         (__class__.__name__, __name__, thread_name, eap_instance.id))
+            logger.debug("%s::%s: THREAD AWAKE: name=%s;eap_instance:%s" %
+                         (__class__.__name__, __name__, thread_name, eap_instance.id))
+
+        print("%s::%s: EXIT THREAD: name=%s;eap_instance:%s" %
+                     (__class__.__name__, __name__, thread_name, eap_instance.id))
+        logger.debug("%s::%s: EXIT THREAD: name=%s;eap_instance:%s" %
+                     (__class__.__name__, __name__, thread_name, eap_instance.id))
+        thread_manager['thread_queue'].pop(thread_name, None)
 
 
 class Engine(Resource):
@@ -322,9 +383,9 @@ class Engine(Resource):
                   description: number of running threads
         """
         data = {}
-        if len(thread_manager['thread_queue']) > 0:
+        if len(thread_manager['thread_queue'].keys()) > 0:
             data['status'] = 'sync processing'
-            data['threads'] = thread_manager['thread_queue'].len()
+            data['threads'] = len(thread_manager['thread_queue'].keys())
         else:
             data['status'] = 'no sync process'
         return data
@@ -363,22 +424,13 @@ class Engine(Resource):
         else:
             # Sanity check
             if data_json[cur_class].lower() == 'start':
-                if len(thread_manager['thread_queue']) > 0:
-                    return {
-                        'code': 400,
-                        'msg': 'engine already started'
-                    }
-                else:
-                    EngineThreading.task_producer_consumer()
+                return EngineThreading.start_main()
             elif data_json[cur_class].lower() == 'stop':
-                if len(thread_manager['thread_queue']) == 0:
-                    return {
-                        'code': 400,
-                        'msg': 'engine already stopped'
-                    }
-                else:
-                    # STOP
-                    pass
+                return EngineThreading.stop_main()
+            elif data_json[cur_class].lower() == 'restart':
+                return EngineThreading.restart_main()
+            else:
+                return "Unknown action", 400
 
 
 api.add_resource(Declare, '/declare')

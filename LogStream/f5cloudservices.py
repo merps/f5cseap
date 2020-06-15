@@ -1,6 +1,8 @@
 import requests
 from LogStream import storage_engine
 from time import gmtime, strftime
+import pytz
+import datetime
 
 
 class F5CSGeneric (storage_engine.DatabaseFormat):
@@ -129,7 +131,7 @@ class F5CSEAPInstance (F5CSGeneric):
         self.get_account_user()
 
     def _update_time(self):
-        return strftime("%Y-%m-%dT%H:%M:%SZ", gmtime())
+        return datetime.datetime.now(tz=pytz.timezone("America/New_York")).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def fetch_security_events(self):
         url = '/waf/v1/analytics/security/events'
@@ -142,14 +144,11 @@ class F5CSEAPInstance (F5CSGeneric):
         self.events += self._post(url, data)['events']
 
     def pop_security_events(self):
-        data = {
-            'service_instance_name': self.service_instance_id,
-            'events': self.events
-        }
+        data = self.events
         self.events = []
         return data
 
-    def get(self):
+    def get_json(self):
         return {
             'service_instance_name': self.service_instance_name,
             'last_time_fetch_security_events': self.time_fetch_security_events,
@@ -201,13 +200,16 @@ class F5CSEAP (F5CSGeneric):
             events.append(eap_instance.pop_security_events())
         return events
 
-    def get(self):
+    def get_json(self):
         data = {
             'username': self.username
         }
         for eap_instance_id, eap_instance in self.children['eap_instance'].items():
-            data[eap_instance_id] = eap_instance.get()
+            data[eap_instance_id] = eap_instance.get_json()
         return data
+
+    def get_eap_instances(self):
+        return self.eap_instances
 
 
 

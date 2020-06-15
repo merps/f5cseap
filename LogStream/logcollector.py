@@ -17,12 +17,19 @@ class RemoteSyslog(storage_engine.DatabaseFormat):
 
     def emit(self, messages):
         for message in messages:
+            struct_message = [
+                'attack_types:' + str(message['attack_types']),
+                'category:' + str(message['category'])
+            ]
+            struct_message = ';'.join(struct_message)
+            self.logger.debug("%s::%s: SEND LOG: %s" %
+                         (__class__.__name__, __name__, struct_message))
             record = logging.makeLogRecord({
-                'msg': message,
+                'msg': struct_message,
             })
             self.handler.emit(record)
 
-    def get(self):
+    def get_json(self):
         return {
             'id': self.id
         }
@@ -50,7 +57,7 @@ class LogCollectorDB(storage_engine.DatabaseFormat):
         type = 'syslog'
         data = []
         for log_instance in self.children[type].values():
-            data.append(log_instance.get())
+            data.append(log_instance.get_json())
         data_all_types[type] = data
 
         return data_all_types
