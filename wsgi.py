@@ -420,7 +420,7 @@ class Engine(Resource):
                   required:
                     - action
                   properties:
-                    f5cs:
+                    action:
                       type: string
                       description : Start/Stop engine
                       enum: ['start', 'stop', 'restart']
