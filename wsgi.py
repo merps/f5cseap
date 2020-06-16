@@ -357,8 +357,7 @@ class EngineThreading(Resource):
         while not thread_flag.is_set():
             eap_instance.get_token()
             eap_instance.fetch_security_events()
-            events = eap_instance.pop_security_events()
-            logcol_db.emit(events)
+            logcol_db.emit(eap_instance.pop_security_events())
 
             print("%s::%s: THREAD SENT LOGS: name=%s;eap_instance:%s" %
                          (__class__.__name__, __name__, thread_name, eap_instance.id))
