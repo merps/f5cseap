@@ -464,7 +464,7 @@ f5cs = f5cloudservices.F5CSEAP(
 )
 
 # load local configuration
-local_config = local_file_manager.Configuration(backup_file='declare.json')
+local_config = local_file_manager.Configuration(backup_file='declaration.json')
 if local_config.get_json() is not None:
     clean_data = Declare.clean(declaration=local_config.get_json())
     # malformed declaration
