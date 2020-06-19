@@ -1,7 +1,7 @@
 from flask import (Flask, request)
 from flask_restful import (Api, Resource)
 from flasgger import Swagger
-from LogStream import f5cloudservices, logcollector
+from LogStream import f5cloudservices, logcollector, local_file_manager
 import logging
 import threading
 import uuid
@@ -22,29 +22,6 @@ def setup_logging(log_level, log_file):
 
     logging.basicConfig(filename=log_file, format='%(asctime)s %(levelname)s %(message)s', level=log_level)
     return logging.getLogger(__name__)
-
-
-# Global var
-logger = setup_logging(
-    log_level='debug',
-    log_file='logs/log.txt'
-)
-
-f5cs = f5cloudservices.F5CSEAP(
-    username=None,
-    password=None,
-    logger=logger
-)
-
-logcol_db = logcollector.LogCollectorDB(logger)
-
-thread_manager = {
-    'event': threading.Event(),
-    'thread_queue': {},
-    'update_interval': 10,
-}
-# event = True == engine stopped
-thread_manager['event'].set()
 
 
 @swagger.definition('f5cs', tags=['v2_model'])
@@ -246,41 +223,59 @@ class Declare(Resource):
             description: Deployment done
          """
         data_json = request.get_json()
-        result = {}
+        clean_data = Declare.clean(declaration=data_json)
 
-        # Sanity check
-        cur_class = 'f5cs'
-        if cur_class in data_json.keys():
-            result[cur_class] = ConfigF5CS.prepare(data_json[cur_class])
-            if result[cur_class]['code'] not in (200, 201, 202):
-                return result, result[cur_class]['code']
+        # data malformated
+        if 'code' in clean_data.keys():
+            return clean_data
+
+        # clean data
         else:
-            return {
-                'code': 400,
-                'msg': 'parameters: ' + cur_class + ' must be set'
-            }
-
-        cur_class = 'logcollector'
-        if cur_class in data_json.keys():
-            result[cur_class] = ConfigLogCollector.prepare(data_json[cur_class])
-            if result[cur_class]['code'] not in (200, 201, 202):
-                return result, result[cur_class]['code']
-        else:
-            return {
-                'code': 400,
-                'msg': 'parameters: ' + cur_class + ' must be set'
-            }
-
-        # Deploy
-        cur_class = 'f5cs'
-        if cur_class in result.keys():
-            ConfigF5CS.set(result[cur_class])
-
-        cur_class = 'logcollector'
-        if cur_class in result.keys():
-            ConfigLogCollector.set(result[cur_class])
+            Declare.deploy(declaration=clean_data)
+            Declare.save(declaration=data_json)
 
         return "Configuration done", 200
+
+    @staticmethod
+    def clean(declaration):
+        result = {}
+        cur_class = 'f5cs'
+        if cur_class in declaration.keys():
+            result[cur_class] = ConfigF5CS.prepare(declaration[cur_class])
+            if result[cur_class]['code'] not in (200, 201, 202):
+                return result, result[cur_class]['code']
+        else:
+            return {
+                'code': 400,
+                'msg': 'parameters: ' + cur_class + ' must be set'
+            }
+
+        cur_class = 'logcollector'
+        if cur_class in declaration.keys():
+            result[cur_class] = ConfigLogCollector.prepare(declaration[cur_class])
+            if result[cur_class]['code'] not in (200, 201, 202):
+                return result, result[cur_class]['code']
+        else:
+            return {
+                'code': 400,
+                'msg': 'parameters: ' + cur_class + ' must be set'
+            }
+
+        return result
+
+    @staticmethod
+    def deploy(declaration):
+        cur_class = 'f5cs'
+        if cur_class in declaration.keys():
+            ConfigF5CS.set(declaration[cur_class])
+
+        cur_class = 'logcollector'
+        if cur_class in declaration.keys():
+            ConfigLogCollector.set(declaration[cur_class])
+    @staticmethod
+    def save(declaration):
+        local_config.set_json(declaration)
+        local_config.save()
 
 
 class EngineThreading(Resource):
@@ -447,7 +442,39 @@ class Engine(Resource):
             else:
                 return "Unknown action", 400
 
+# Global var
+logger = setup_logging(
+    log_level='debug',
+    log_file='logs/log.txt'
+)
+logcol_db = logcollector.LogCollectorDB(logger)
+thread_manager = {
+    'event': threading.Event(),
+    'thread_queue': {},
+    'update_interval': 10,
+}
 
+# event = True == engine stopped
+thread_manager['event'].set()
+
+f5cs = f5cloudservices.F5CSEAP(
+    username=None,
+    password=None,
+    logger=logger
+)
+
+# load local configuration
+local_config = local_file_manager.Configuration(backup_file='declare.json')
+if local_config.get_json() is not None:
+    clean_data = Declare.clean(declaration=local_config.get_json())
+    # malformed declaration
+    if 'code' in clean_data.keys():
+        raise Exception('Local configuration file is malformated', clean_data)
+
+    # deploy
+    Declare.deploy(declaration=clean_data)
+
+# API
 api.add_resource(Declare, '/declare')
 api.add_resource(Engine, '/engine')
 

@@ -1,9 +1,6 @@
 import logging
-import socket
 from logging.handlers import SysLogHandler
 from LogStream import storage_engine
-from urllib.parse import urlencode
-from time import gmtime, strftime
 
 
 class RemoteSyslog(storage_engine.DatabaseFormat):
@@ -18,8 +15,36 @@ class RemoteSyslog(storage_engine.DatabaseFormat):
     def emit(self, messages):
         for message in messages:
             struct_message = [
-                'attack_types:' + str(message['attack_types']),
-                'category:' + str(message['category'])
+                'attack_types=' + str(message['attack_types']),
+                'category=' + str(message['category']),
+                'cloud_provider=' + str(message['cloud_provider']),
+                'date_time=' + str(message['date_time']),
+                'detection_events=' + str(message['detection_events']),
+                'geo_city=' + str(message['geo_city']),
+                'geo_country=' + str(message['geo_country']),
+                'geo_country_code=' + str(message['geo_country_code']),
+                'geo_latitude=' + str(message['geo_latitude']),
+                'geo_longitude=' + str(message['geo_longitude']),
+                'geo_state=' + str(message['geo_state']),
+                'header=' + str(message['header']),
+                'ip_address_intelligence=' + str(message['ip_address_intelligence']),
+                'method=' + str(message['method']),
+                'protocol=' + str(message['protocol']),
+                'query_string=' + str(message['query_string']),
+                'region=' + str(message['region']),
+                'request_status=' + str(message['request_status']),
+                'response_code=' + str(message['response_code']),
+                'severity=' + str(message['severity']),
+                'sig_ids=' + str(message['sig_ids']),
+                'sig_names=' + str(message['sig_names']),
+                'source_ip=' + str(message['source_ip']),
+                'src_port=' + str(message['src_port']),
+                'sub_violations=' + str(message['sub_violations']),
+                'support_id=' + str(message['support_id']),
+                'threat_campaign_ids=' + str(message['threat_campaign_ids']),
+                'threat_campaign_names=' + str(message['threat_campaign_names']),
+                'violation_details_json=' + str(message['violation_details_json']),
+                'violation_rating=' + str(message['violation_rating']),
             ]
             struct_message = ';'.join(struct_message)
             self.logger.debug("%s::%s: SEND LOG: %s" %
