@@ -1,7 +1,6 @@
 FROM python:3
-ENV PYTHONUNBUFFERED 1
-RUN mkdir /logstream
-WORKDIR /code
-COPY requirements.txt /logstream/
+RUN mkdir /LogStream
+WORKDIR /LogStream
+COPY requirements.txt /LogStream/
 RUN pip install -r requirements.txt
-COPY . /logstream/
+COPY . /LogStream/
