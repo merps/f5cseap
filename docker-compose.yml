@@ -1,0 +1,10 @@
+version: '3'
+    
+  services:
+    web:
+      build: .
+      command: python wsgi.py.py runserver 0.0.0.0:5000
+      volumes:
+        - .:/code
+      ports:
+        - "5000:5000"
