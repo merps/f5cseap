@@ -4,7 +4,7 @@ F5 Cloud Services – LogStream
 
 ## Overview
 
-The purpose of this project is to allow the ability to download F5 Cloud Services Essentail App Protect (EAP) logs in real-time and steam the data to mulitple-log services. The LogSteam service is software hosted on a VM and/or docker image and does not store persistent logs.
+The purpose of this project is to allow the ability to download F5 Cloud Services Essential App Protect (EAP) logs in real-time and steam the data to mulitple-log services. The LogSteam service is software hosted on a VM and/or docker image and does not store persistent logs.
 
 ### The flow is as:
 Replace with image
