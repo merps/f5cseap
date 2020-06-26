@@ -30,6 +30,9 @@ delclaration.json
 }
 ```
 
+### Support for Multiple EAP Instances
+The LogStream agent will pull your catalog under your organization and build a list of all the EAP instances you are subscribed to. The EAP instances have a defined valued that will be refereced within the LogStream agent to pull the correct log files and defined FQDN.  
+
 ### Logging Format
 The native format for EAP logs is json, we have parsed the logs giving the capability to define logger format.
 ```
