@@ -51,4 +51,4 @@ attack_types, category, cloud_provider, date_time, detection_events, geo_city, g
 In order to pull the logs from the API you will need to define a user account, user password and assocated that user role to a limited user. The linited user has the ability to view the configuration but cannot make changes. The limited user also has access over the GUI and API. 
 
 * https://clouddocs.f5.com/cloud-services/latest/f5-cloud-services-GS-FAQ.html#q-what-are-organizations-users-and-roles
-* https://clouddocs.f5.com/cloud-services/latest/f5-cloud-services-GS-FAQ.html#q-what-are-organizations-users-and-roles
+
